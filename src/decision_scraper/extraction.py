@@ -6,31 +6,48 @@ from crawl4ai.extraction_strategy import LLMExtractionStrategy
 from .models import DecisionMakersResponse
 
 EXTRACTION_INSTRUCTION = """\
-You are a precise data extraction assistant. Your task is to extract decision-maker \
-information from the provided web page content.
+You are a precise data extraction assistant. Your task is to find the \
+business owner or decision maker from the provided web page content.
 
-RULES — YOU MUST FOLLOW ALL OF THESE:
-1. ONLY extract people who are explicitly named on the page.
-2. ONLY include people with a senior/executive title that is explicitly stated on the page. \
-   Qualifying titles include:
-   - Corporate: Owner, CEO, Founder, Co-Founder, President, Vice President (VP), \
-     Director, Managing Director, Partner, Principal, General Manager.
-   - C-suite: CTO, CFO, COO, CMO, CIO, CPO, or any other "Chief" title.
-   - Professional practice owners: Doctor (MD, DO), Dentist (DDS, DMD), \
-     Attorney, Architect, or any licensed professional who is the named \
-     principal/owner of the practice or firm shown on the website.
-3. Do NOT include regular employees, managers, supervisors, coordinators, analysts, \
-   engineers, designers, hygienists, assistants, receptionists, or any non-executive staff.
-4. For each field (email, phone, linkedin): return the value ONLY if it appears on the page \
-   in direct association with that person. If you cannot find it, return null. \
-   NEVER guess, infer, or generate contact information.
-5. If a general phone number or email is shown on the page (not tied to a specific person), \
-   you MAY associate it with the primary decision maker if the page clearly belongs to \
-   their practice or business.
-6. If the page contains no qualifying decision makers, return {"decision_makers": []}.
-7. Do NOT fabricate names, titles, emails, phone numbers, or LinkedIn URLs under any \
-   circumstances.
-8. Preserve the exact spelling of names and titles as they appear on the page.
+WHO TO EXTRACT — identify the person who OWNS or RUNS this business:
+1. People with explicit titles: Owner, CEO, Founder, President, Director, \
+   Partner, Principal, Managing Member, General Manager, or any C-suite role.
+2. Licensed professionals who own the business: Master Plumber, Licensed \
+   Plumber, Licensed Electrician, Licensed Contractor, General Contractor, \
+   Dentist (DDS/DMD), Doctor (MD/DO), Attorney, CPA, Architect, etc. \
+   If a license holder's name appears on a service business website, they \
+   are very likely the owner.
+3. People whose name IS the business name or is part of it \
+   (e.g. "Smith Plumbing" → John Smith is the owner).
+4. People identified through context clues on the page such as:
+   - "Family-owned by [Name]" or "[Name] started this company in..."
+   - A personal name in the copyright line: "© 2024 John Smith Plumbing"
+   - "Call [Name]" or "[Name] and his team..."
+   - "About [Name]" sections, personal bios, or owner introductions
+   - License numbers tied to a person: "License #12345 - John Smith"
+   - A person featured prominently on the homepage with a photo
+5. If the website is clearly a small/local business (plumber, electrician, \
+   HVAC, roofer, landscaper, cleaning service, etc.) and ONE person's name \
+   appears prominently, they are almost certainly the owner — extract them \
+   with title "Owner" even if that exact word doesn't appear.
+
+WHO NOT TO EXTRACT:
+- Technicians, assistants, dispatchers, office staff, receptionists
+- Names that only appear in customer testimonials/reviews
+- Names that only appear in blog post author bylines
+- Generic team mentions without specific names
+
+CONTACT INFORMATION RULES:
+- For email/phone: extract if it appears ANYWHERE on the page. On a small \
+  business site, the main phone/email IS the owner's contact info.
+- For LinkedIn: only if an actual LinkedIn URL appears on the page.
+- NEVER fabricate or guess contact information. Return null if not found.
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- The person's name MUST actually appear as text on the page.
+- Do NOT invent names, titles, or contact info under any circumstances.
+- If no owner/decision maker can be identified, return {"decision_makers": []}.
+- Preserve exact spelling of names as they appear on the page.
 
 Return valid JSON matching the provided schema.\
 """

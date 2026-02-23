@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import sys
 from typing import Optional
 
@@ -18,14 +19,67 @@ from .resources import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
-# Executive title keywords used for post-extraction validation
-QUALIFYING_TITLES = [
-    "owner", "ceo", "founder", "co-founder", "president",
-    "vp", "vice president", "director", "partner", "principal",
-    "chief", "cto", "cfo", "coo", "cmo", "cio", "cpo",
-    "managing director", "general manager", "dentist", "doctor",
-    "dds", "dmd", "md", "physician", "surgeon",
-]
+# Titles/roles that confirm someone is a decision maker.
+# Used for soft validation — if the LLM returns a title containing any of
+# these, we are confident. If the title is something else, we still accept
+# it as long as the name passes basic sanity checks (the LLM prompt is
+# engineered to only return owners/decision makers).
+KNOWN_DECISION_ROLES = re.compile(
+    r"owner|ceo|founder|co-founder|president|vp|vice.president|director|"
+    r"partner|principal|chief|cto|cfo|coo|cmo|cio|cpo|"
+    r"managing.director|general.manager|"
+    r"plumb|electric|contrac|hvac|roofing|landscap|"
+    r"master|licensed|journeyman|"
+    r"dentist|dds|dmd|doctor|md|physician|surgeon|"
+    r"attorney|lawyer|cpa|architect|engineer|"
+    r"broker|realtor|agent",
+    re.IGNORECASE,
+)
+
+# Names that are clearly NOT real person names — reject these.
+_JUNK_NAME_PATTERNS = re.compile(
+    r"^(http|www\.|/|@|#|\d{3,}|n/?a$|none$|null$|unknown$|"
+    r"team$|staff$|our team$|contact us$|home$|services?$)",
+    re.IGNORECASE,
+)
+
+# Names that look like business names rather than person names.
+_BUSINESS_NAME_WORDS = re.compile(
+    r"\b(service|plumbing|electric|hvac|roofing|dental|clinic|"
+    r"company|inc|llc|corp|ltd|group|associates|solutions|"
+    r"construction|repair|maintenance|installation)\b",
+    re.IGNORECASE,
+)
+
+# Titles that indicate someone is NOT a decision maker — reject these.
+# This is a blocklist approach: if the title matches, the person is almost
+# certainly not an owner/executive.  We use a function instead of a single
+# regex so we can handle the "General Manager" exception cleanly.
+_NON_DECISION_TITLE_WORDS = re.compile(
+    r"team.lead|coordinator|"
+    r"technician|\btech\b|assistant|receptionist|dispatcher|"
+    r"secretary|clerk|\bintern\b|trainee|"
+    r"specialist|analyst|developer|designer|"
+    r"accountant|bookkeeper|payroll|"
+    r"customer.service|\bsupport\b|"
+    r"estimator|supervisor|foreman",
+    re.IGNORECASE,
+)
+
+# "Manager" is tricky — "General Manager" IS a decision maker, but
+# "Project Manager", "Content Manager" etc. are not.
+_MANAGER_PATTERN = re.compile(r"\bmanager\b", re.IGNORECASE)
+_MANAGER_EXCEPTIONS = re.compile(r"general.manager|managing", re.IGNORECASE)
+
+
+def _is_non_decision_title(title: str) -> bool:
+    """Return True if the title indicates a non-decision-maker role."""
+    if _NON_DECISION_TITLE_WORDS.search(title):
+        return True
+    # Check "manager" separately with exceptions
+    if _MANAGER_PATTERN.search(title) and not _MANAGER_EXCEPTIONS.search(title):
+        return True
+    return False
 
 
 class CrawlManager:
@@ -138,26 +192,43 @@ class CrawlManager:
         else:
             return []
 
-        # Validate each entry
+        # Validate each entry — balanced validation that trusts the LLM
+        # for decision-maker identification but filters out:
+        # 1. Junk/invalid names
+        # 2. People with titles that are clearly non-decision-maker roles
         validated: list[DecisionMaker] = []
         for entry in data_list:
             try:
                 dm = DecisionMaker.model_validate(entry)
 
-                # Name must be a real name (not a URL, not empty)
-                if not dm.name or len(dm.name.strip()) < 2:
-                    continue
-                if dm.name.startswith("http"):
+                name = dm.name.strip()
+
+                # Reject empty / too-short names
+                if len(name) < 2:
                     continue
 
-                # Title validation: must contain a qualifying keyword
-                if dm.title:
-                    title_lower = dm.title.lower()
-                    if not any(q in title_lower for q in QUALIFYING_TITLES):
-                        continue  # Skip non-decision-makers
-                else:
-                    # No title at all — skip (we need at least a title
-                    # to confirm they are a decision maker)
+                # Reject names that are clearly not person names
+                if _JUNK_NAME_PATTERNS.search(name):
+                    continue
+
+                # Name must have at least one letter
+                if not any(c.isalpha() for c in name):
+                    continue
+
+                # Reject names that look like business names
+                if _BUSINESS_NAME_WORDS.search(name):
+                    logger.debug(f"Filtered business name: {name}")
+                    continue
+
+                # Reject if title is a known non-decision-maker role
+                if dm.title and _is_non_decision_title(dm.title):
+                    logger.debug(f"Filtered non-decision-maker: {name} ({dm.title})")
+                    continue
+
+                # Reject first-name-only entries with no title
+                # (likely junk from the LLM guessing)
+                if dm.title is None and " " not in name:
+                    logger.debug(f"Filtered first-name-only with no title: {name}")
                     continue
 
                 validated.append(dm)

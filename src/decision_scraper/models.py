@@ -11,25 +11,33 @@ class DecisionMaker(BaseModel):
     """A single decision-maker extracted from a web page."""
 
     name: str = Field(
-        description="Full name of the decision maker. Must be explicitly stated on the page."
+        description="Full name of the business owner or decision maker. Must be explicitly stated on the page."
     )
     title: Optional[str] = Field(
         default=None,
         description=(
-            "Job title exactly as written on the page. "
-            "Must be a senior/executive role: Owner, CEO, Founder, Co-Founder, "
-            "President, Vice President, VP, Director, Managing Director, Partner, "
-            "Chief Officer (CTO, CFO, COO, CMO, etc.). "
-            "Return null if the title is not explicitly stated."
+            "Their role or title. Use exactly what the page says if available. "
+            "If the page doesn't state an explicit title but the person is "
+            "clearly the business owner (their name is the business, they hold "
+            "the license, they are the only person featured), use 'Owner'. "
+            "Examples: Owner, CEO, Founder, Master Plumber, Licensed Contractor, "
+            "Dentist, President, Director, Partner. "
+            "Return null only if you truly cannot determine their role."
         ),
     )
     email: Optional[str] = Field(
         default=None,
-        description="Email address. Must appear on the page. Return null if not found.",
+        description=(
+            "Email address. On small business sites the main contact email "
+            "IS the owner's email. Return null if no email found on the page."
+        ),
     )
     phone: Optional[str] = Field(
         default=None,
-        description="Phone number. Must appear on the page. Return null if not found.",
+        description=(
+            "Phone number. On small business sites the main phone number "
+            "IS the owner's phone. Return null if no phone found on the page."
+        ),
     )
     linkedin: Optional[str] = Field(
         default=None,
@@ -43,10 +51,10 @@ class DecisionMakersResponse(BaseModel):
     decision_makers: list[DecisionMaker] = Field(
         default_factory=list,
         description=(
-            "List of decision makers found on this page. "
-            "Only include people whose name AND a qualifying senior title are "
-            "BOTH explicitly visible on the page. "
-            "If no decision makers are found, return an empty list."
+            "List of business owners or decision makers found on this page. "
+            "Include anyone who owns or runs the business — even on small "
+            "local service company websites where the owner may not have a "
+            "formal title. If no one can be identified, return an empty list."
         ),
     )
 

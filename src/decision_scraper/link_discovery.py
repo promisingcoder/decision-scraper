@@ -4,17 +4,25 @@ from urllib.parse import urljoin, urlparse
 
 # Keywords that strongly suggest decision-maker content (high priority)
 HIGH_PRIORITY_KEYWORDS = [
+    # Corporate team/leadership pages
     "about", "team", "leadership", "executive", "management",
     "staff", "people", "founders", "directors", "board",
     "our-team", "our-people", "who-we-are", "meet-the-team",
     "meet-us", "bios", "principals", "partners",
+    # Professional practices (dental, medical, legal)
     "doctor", "dentist", "provider", "attorney", "our-doctor",
     "our-staff", "our-providers", "meet-our",
+    # Small business / local service pages
+    "about-us", "our-story", "our-company", "who-we-are",
+    "why-us", "why-choose", "credentials", "license",
+    "owner", "our-owner", "meet-the-owner",
 ]
 
 # Keywords for contact pages (medium priority — may have names + emails)
 MEDIUM_PRIORITY_KEYWORDS = [
     "contact", "contact-us", "get-in-touch", "reach-us",
+    # Small business pages that often mention the owner
+    "reviews", "testimonial", "warranty", "guarantee",
 ]
 
 # Keywords for pages to skip entirely
